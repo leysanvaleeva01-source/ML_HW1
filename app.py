@@ -19,14 +19,23 @@ st.write("Cмотрим графики")
 
 @st.cache_resource
 def load_pipeline():
+    """Загружает обученный пайплайн"""
     try:
-        with open('final_pipeline.pkl', 'rb') as f:
-            pipeline = pickle.load(f)
-        return pipeline
-    except FileNotFoundError:
-        st.error("Файл final_pipeline.pkl не найден")
+        # Проверяем, существует ли файл локально
+        if os.path.exists('final_pipeline.pkl'):
+            with open('final_pipeline.pkl', 'rb') as f:
+                pipeline = pickle.load(f)
+            st.success("Модель загружена успешно!")
+            return pipeline
+        else:
+            # Если файла нет локально, пробуем загрузить из текущей директории
+            st.warning("Файл final_pipeline.pkl не найден в текущей директории")
+            st.info("Текущая рабочая директория: " + os.getcwd())
+            st.info("Содержимое директории: " + str(os.listdir('.')))
+            return None
+    except Exception as e:
+        st.error(f"Ошибка загрузки модели: {e}")
         return None
-
 @st.cache_data
 def load_and_preprocess_data():
     try:
