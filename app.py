@@ -1,94 +1,114 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import pickle
-import os
-import warnings
-warnings.filterwarnings('ignore')
+import requests
+import io
 
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer, make_column_selector
-from sklearn.pipeline import Pipeline
-from sklearn.linear_model import Ridge
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import r2_score
-
-st.set_page_config(
-    page_title="Предсказание цен на автомобили",
-    layout="wide"
-)
-
-st.title('EDA')
-st.write("Cмотрим графики")
-
-
-#Пришлось заново строить предобработку, потому что streamlit c ней не подружился
-def preprocess_data(df, reference_df=None):
-    """Вся предобработка, которую мы использовали"""
-    df = df.copy()
-    columns_to_clean = ['mileage', 'engine', 'max_power']
-    for column in columns_to_clean:
-        df[column] = df[column].astype(str).str.replace(r'[^\d\.]+', '', regex=True)
-        df[column] = pd.to_numeric(df[column], errors='coerce').astype('float64')
-    if 'torque' in df.columns:
-        df = df.drop('torque', axis=1)
-    if 'name' in df.columns:
-        df['brand'] = df['name'].str.split().str[0]
-        df = df.drop('name', axis=1)
-        col = "brand"
-        if reference_df is not None:
-            train_cats = set(reference_df[col].unique())
-            test_cats = set(df[col].unique())
-            unknown = test_cats - train_cats
-            if unknown:
-                most_frequent = reference_df[col].mode()[0]
-                df[col] = df[col].replace(list(unknown), most_frequent)
-    
-    return df
-
+st.set_page_config(page_title="Car Price Prediction", layout="wide")
+st.title('Car Price Prediction')
 
 @st.cache_resource
-def load_pipeline():
-    """Загружает обученный пайплайн"""
-    try:
-        # Проверяем, существует ли файл локально
-        if os.path.exists('final_pipeline.pkl'):
-            with open('final_pipeline.pkl', 'rb') as f:
-                pipeline = pickle.load(f)
-            st.success("Модель загружена успешно!")
-            return pipeline
-        else:
-            # Если файла нет локально, пробуем загрузить из текущей директории
-            st.warning("Файл final_pipeline.pkl не найден в текущей директории")
-            st.info("Текущая рабочая директория: " + os.getcwd())
-            st.info("Содержимое директории: " + str(os.listdir('.')))
-            return None
-    except Exception as e:
-        st.error(f"Ошибка загрузки модели: {e}")
-        return None
-@st.cache_data
-def load_and_preprocess_data():
-    try:
-        # Загружаем исходные данные
-        train_url = "https://raw.githubusercontent.com/Murcha1990/MLDS_ML_2022/main/Hometasks/HT1/cars_train.csv"
-        test_url = "https://raw.githubusercontent.com/Murcha1990/MLDS_ML_2022/main/Hometasks/HT1/cars_test.csv"
-        
-        df_train_raw = pd.read_csv(train_url)
-        df_test_raw = pd.read_csv(test_url)
-        
-        y_train = df_train_raw['selling_price']
-        y_test = df_test_raw['selling_price']
-        X_train_raw = df_train_raw.drop('selling_price', axis=1)
-        X_test_raw = df_test_raw.drop('selling_price', axis=1)
-        
-        return X_train_raw, y_train, X_test_raw, y_test
-        
-    except Exception as e:
-        st.error(f"Ошибка загрузки данных: {e}")
-        return None, None, None, None
+def load_model():
+    with open("simple_model.pkl", "rb") as f:
+        return pickle.load(f)
 
-pipeline = load_pipeline()
-X_train_raw, y_train, X_test_raw, y_test = load_and_preprocess_data()
+@st.cache_data
+def load_preprocessed_data():
+    with open("preprocessed_data.pkl", "rb") as f:
+        return pickle.load(f)
+
+# Функция предобработки как в Colab
+def preprocess_input(input_dict, data):
+    # Создаём DataFrame с тем же форматом
+    df = pd.DataFrame([input_dict])
+    
+    # Предобработка
+    df = df.drop(columns=['torque'], errors='ignore')
+    
+    # Чистим числовые поля
+    for col in ['mileage', 'engine', 'max_power']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Добавляем бренд
+    df['brand'] = df['name'].str.split().str[0]
+    df = df.drop(columns=['name'])
+    
+    # Убедимся что все колонки есть
+    for col in data['feature_names']:
+        if col not in df.columns:
+            df[col] = 0
+    
+    return df[data['feature_names']]
+
+# Загружаем
+try:
+    model = load_model()
+    data = load_preprocessed_data()
+    df_raw = pd.read_csv("https://raw.githubusercontent.com/Murcha1990/MLDS_ML_2022/main/Hometasks/HT1/cars_train.csv")
+    
+    st.sidebar.header("Input Car Details")
+    
+    year = st.sidebar.number_input("Year", 1980, 2024, 2015)
+    km_driven = st.sidebar.number_input("KM Driven", 0, 1000000, 50000)
+    mileage = st.sidebar.number_input("Mileage", 0.0, 50.0, 20.0)
+    engine = st.sidebar.number_input("Engine (CC)", 0, 5000, 1200)
+    max_power = st.sidebar.number_input("Max Power", 0.0, 500.0, 80.0)
+    
+    fuel = st.sidebar.selectbox("Fuel Type", df_raw['fuel'].unique())
+    seller_type = st.sidebar.selectbox("Seller Type", df_raw['seller_type'].unique())
+    transmission = st.sidebar.selectbox("Transmission", df_raw['transmission'].unique())
+    owner = st.sidebar.selectbox("Owner", df_raw['owner'].unique())
+    seats = st.sidebar.selectbox("Seats", sorted(df_raw['seats'].dropna().unique().astype(int)))
+    
+    brand_names = df_raw['name'].str.split().str[0].unique()
+    brand = st.sidebar.selectbox("Brand", sorted(brand_names))
+    
+    if st.sidebar.button("Predict Price"):
+        # Создаём входные данные
+        input_dict = {
+            'name': f"{brand} Model",
+            'year': year,
+            'km_driven': km_driven,
+            'fuel': fuel,
+            'seller_type': seller_type,
+            'transmission': transmission,
+            'owner': owner,
+            'mileage': mileage,
+            'engine': engine,
+            'max_power': max_power,
+            'seats': seats,
+            'torque': '100Nm@2000rpm'
+        }
+        
+        # Предобрабатываем
+        X_input = preprocess_input(input_dict, data)
+        
+        # Предсказываем
+        prediction = model.predict(X_input)[0]
+        
+        st.success(f"### Predicted Price: ₹{prediction:,.2f}")
+        
+        # Показываем данные
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Input Features")
+            st.dataframe(X_input)
+        
+        with col2:
+            st.subheader("Model Info")
+            st.write(f"Features: {len(data['feature_names'])}")
+            st.write(f"Train samples: {len(data['X_train'])}")
+    
+    # Информация о данных
+    with st.expander("Preprocessed Data Info"):
+        st.write(f"X_train shape: {data['X_train'].shape}")
+        st.write(f"y_train shape: {data['y_train'].shape}")
+        st.write(f"Features: {data['feature_names']}")
+
+except FileNotFoundError as e:
+    st.error(f"File not found: {e}")
+    st.info("Please upload preprocessed_data.pkl and simple_model.pkl")
+    
+except Exception as e:
+    st.error(f"Error: {str(e)[:200]}")
