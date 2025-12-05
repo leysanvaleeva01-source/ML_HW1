@@ -1,10 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import random
-import seaborn as sns
-import pickle
 import sklearn
 import sys
 import platform
@@ -23,21 +19,17 @@ with col1:
     
 with col2:
     st.subheader("Visualization")
-    st.write(f"**Matplotlib:** {plt.__version__}")
-    st.write(f"**Seaborn:** {sns.__version__}")
-
-st.subheader("All Versions Table")
-versions_data = {
-    "Library": [
-        "Streamlit", "Pandas", "NumPy", "Scikit-learn",
-        "Matplotlib", "Seaborn"
-    ],
-    "Version": [
-        st.__version__, pd.__version__, np.__version__, sklearn.__version__,
-        plt.__version__, sns.__version__
-    ]
-}
-st.dataframe(pd.DataFrame(versions_data))
+    try:
+        import matplotlib.pyplot as plt
+        st.write(f"**Matplotlib:** {plt.__version__}")
+    except:
+        st.write("**Matplotlib:** Not available")
+    
+    try:
+        import seaborn as sns
+        st.write(f"**Seaborn:** {sns.__version__}")
+    except:
+        st.write("**Seaborn:** Not available")
 
 st.subheader("Sklearn Components")
 try:
@@ -62,18 +54,12 @@ try:
             exec(f"test = {comp}")
             status_data.append({"Component": comp, "Status": "✅ Available"})
         except:
-            status_data.append({"Component": comp, "Status": "⚠️ Check required"})
+            status_data.append({"Component": comp, "Status": "⚠️ Not available"})
     
     st.dataframe(pd.DataFrame(status_data))
     
 except Exception as e:
-    st.error(f"Error checking sklearn: {e}")
-
-try:
-    from ydata_profiling import ProfileReport
-    st.success("✅ ydata-profiling: Available")
-except ImportError:
-    st.warning("❌ ydata-profiling: Not installed")
+    st.error(f"Error checking sklearn: {str(e)[:100]}")
 
 st.subheader("System Information")
 sys_info = {
