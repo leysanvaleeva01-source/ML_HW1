@@ -5,6 +5,8 @@ import pickle
 import requests
 from sklearn.compose import ColumnTransformer
 import joblib
+import sklearn
+print(sklearn.__version__)
 
 st.set_page_config(page_title="Car Price Prediction", layout="wide")
 st.title('Car Price Prediction')
