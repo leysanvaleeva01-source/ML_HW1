@@ -16,10 +16,6 @@ st.set_page_config(
 st.title('Предсказатель цен на автомобили')
 st.write("Предсказание стоимости автомобилей на основе характеристик")
 
-
-
-st.write(f"Файл существует: {os.path.exists('final_pipeline.pkl')}")
-st.write(f"Размер файла: {os.path.getsize('final_pipeline.pkl') / 1024 / 1024:.2f} MB")
 @st.cache_resource
 def load_pipeline():
     try:
