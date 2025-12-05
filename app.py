@@ -24,6 +24,32 @@ st.set_page_config(
 st.title('EDA')
 st.write("Cмотрим графики")
 
+
+#Пришлось заново строить предобработку, потому что streamlit c ней не подружился
+def preprocess_data(df, reference_df=None):
+    """Вся предобработка, которую мы использовали"""
+    df = df.copy()
+    columns_to_clean = ['mileage', 'engine', 'max_power']
+    for column in columns_to_clean:
+        df[column] = df[column].astype(str).str.replace(r'[^\d\.]+', '', regex=True)
+        df[column] = pd.to_numeric(df[column], errors='coerce').astype('float64')
+    if 'torque' in df.columns:
+        df = df.drop('torque', axis=1)
+    if 'name' in df.columns:
+        df['brand'] = df['name'].str.split().str[0]
+        df = df.drop('name', axis=1)
+        col = "brand"
+        if reference_df is not None:
+            train_cats = set(reference_df[col].unique())
+            test_cats = set(df[col].unique())
+            unknown = test_cats - train_cats
+            if unknown:
+                most_frequent = reference_df[col].mode()[0]
+                df[col] = df[col].replace(list(unknown), most_frequent)
+    
+    return df
+
+
 @st.cache_resource
 def load_pipeline():
     """Загружает обученный пайплайн"""
@@ -63,30 +89,6 @@ def load_and_preprocess_data():
     except Exception as e:
         st.error(f"Ошибка загрузки данных: {e}")
         return None, None, None, None
-
-#Пришлось заново строить предобработку, потому что streamlit c ней не подружился
-def preprocess_data(df, reference_df=None):
-    """Вся предобработка, которую мы использовали"""
-    df = df.copy()
-    columns_to_clean = ['mileage', 'engine', 'max_power']
-    for column in columns_to_clean:
-        df[column] = df[column].astype(str).str.replace(r'[^\d\.]+', '', regex=True)
-        df[column] = pd.to_numeric(df[column], errors='coerce').astype('float64')
-    if 'torque' in df.columns:
-        df = df.drop('torque', axis=1)
-    if 'name' in df.columns:
-        df['brand'] = df['name'].str.split().str[0]
-        df = df.drop('name', axis=1)
-        col = "brand"
-        if reference_df is not None:
-            train_cats = set(reference_df[col].unique())
-            test_cats = set(df[col].unique())
-            unknown = test_cats - train_cats
-            if unknown:
-                most_frequent = reference_df[col].mode()[0]
-                df[col] = df[col].replace(list(unknown), most_frequent)
-    
-    return df
 
 pipeline = load_pipeline()
 X_train_raw, y_train, X_test_raw, y_test = load_and_preprocess_data()
