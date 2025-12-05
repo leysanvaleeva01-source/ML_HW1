@@ -49,7 +49,7 @@ try:
         col1, col2 = st.columns(2)
         
         with col1:
-            year = st.number_input("Год выпуска", 1980, 2024, 2015)
+            year = st.number_input("Год выпуска", 1900, 2024, 2015)
             km_driven = st.number_input("Пробег (км)", 0, 1000000, 50000)
             mileage = st.number_input("Расход топлива", 0.0, 50.0, 20.0)
             engine = st.number_input("Объем двигателя (см³)", 0, 5000, 1200)
@@ -68,7 +68,13 @@ try:
             transmission = st.selectbox("Трансмиссия", transmission_options) if len(transmission_options) > 0 else st.selectbox("Трансмиссия", ["Manual", "Automatic"])
             owner = st.selectbox("Владелец", owner_options) if len(owner_options) > 0 else st.selectbox("Владелец", ["First Owner", "Second Owner"])
             seats = st.selectbox("Количество мест", seats_options) if len(seats_options) > 0 else st.selectbox("Количество мест", [5, 7, 8])
-            brand = st.selectbox("Марка", brand_options) if len(brand_options) > 0 else st.selectbox("Марка", ["Maruti", "Hyundai", "Honda"])
+            # Выбор марки: из списка или ввод своей
+            brand_choice = st.radio("Выберите марку:", ["Из списка", "Ввести свою марку"])
+            
+            if brand_choice == "Из списка":
+                brand = st.selectbox("Марка (из списка)", brand_options) if len(brand_options) > 0 else st.selectbox("Марка", ["Maruti", "Hyundai", "Honda"])
+            else:
+                brand = st.text_input("Введите марку автомобиля", "Tesla")
         
         if st.button("Предсказать цену", type="primary"):
             input_dict = {
