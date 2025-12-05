@@ -1,94 +1,59 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import pickle
-import os
-import warnings
-warnings.filterwarnings('ignore')
+import sklearn
+import sys
+import platform
 
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer, make_column_selector
-from sklearn.pipeline import Pipeline
-from sklearn.linear_model import Ridge
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import r2_score
+st.set_page_config(page_title="System Info", layout="wide")
+st.title('System Information')
 
-st.set_page_config(
-    page_title="Предсказание цен на автомобили",
-    layout="wide"
-)
+col1, col2 = st.columns(2)
 
-st.title('EDA')
-st.write("Cмотрим графики")
+with col1:
+    st.subheader("Python Information")
+    st.write(f"**Python Version:** {sys.version}")
+    st.write(f"**Platform:** {platform.platform()}")
+    st.write(f"**Executable:** {sys.executable}")
 
-
-#Пришлось заново строить предобработку, потому что streamlit c ней не подружился
-def preprocess_data(df, reference_df=None):
-    """Вся предобработка, которую мы использовали"""
-    df = df.copy()
-    columns_to_clean = ['mileage', 'engine', 'max_power']
-    for column in columns_to_clean:
-        df[column] = df[column].astype(str).str.replace(r'[^\d\.]+', '', regex=True)
-        df[column] = pd.to_numeric(df[column], errors='coerce').astype('float64')
-    if 'torque' in df.columns:
-        df = df.drop('torque', axis=1)
-    if 'name' in df.columns:
-        df['brand'] = df['name'].str.split().str[0]
-        df = df.drop('name', axis=1)
-        col = "brand"
-        if reference_df is not None:
-            train_cats = set(reference_df[col].unique())
-            test_cats = set(df[col].unique())
-            unknown = test_cats - train_cats
-            if unknown:
-                most_frequent = reference_df[col].mode()[0]
-                df[col] = df[col].replace(list(unknown), most_frequent)
+with col2:
+    st.subheader("Core Libraries")
     
-    return df
+    lib_versions = {
+        "Streamlit": ("streamlit", "__version__"),
+        "Pandas": ("pandas", "__version__"),
+        "NumPy": ("numpy", "__version__"),
+        "Scikit-learn": ("sklearn", "__version__"),
+        "SciPy": ("scipy", "__version__")
+    }
+    
+    for lib_name, (module_name, attr) in lib_versions.items():
+        try:
+            module = __import__(module_name)
+            version = getattr(module, attr, "N/A")
+            st.write(f"**{lib_name}:** {version}")
+        except ImportError:
+            st.write(f"**{lib_name}:** Not installed")
 
+st.subheader("Installed Packages")
+try:
+    import pkg_resources
+    
+    packages = []
+    for dist in pkg_resources.working_set:
+        packages.append(f"{dist.project_name}=={dist.version}")
+    
+    packages.sort()
+    
+    st.text_area("All installed packages:", "\n".join(packages), height=300)
+except:
+    st.warning("Could not get full package list")
 
-@st.cache_resource
-def load_pipeline():
-    """Загружает обученный пайплайн"""
-    try:
-        # Проверяем, существует ли файл локально
-        if os.path.exists('final_pipeline.pkl'):
-            with open('final_pipeline.pkl', 'rb') as f:
-                pipeline = pickle.load(f)
-            st.success("Модель загружена успешно!")
-            return pipeline
-        else:
-            # Если файла нет локально, пробуем загрузить из текущей директории
-            st.warning("Файл final_pipeline.pkl не найден в текущей директории")
-            st.info("Текущая рабочая директория: " + os.getcwd())
-            st.info("Содержимое директории: " + str(os.listdir('.')))
-            return None
-    except Exception as e:
-        st.error(f"Ошибка загрузки модели: {e}")
-        return None
-@st.cache_data
-def load_and_preprocess_data():
-    try:
-        # Загружаем исходные данные
-        train_url = "https://raw.githubusercontent.com/Murcha1990/MLDS_ML_2022/main/Hometasks/HT1/cars_train.csv"
-        test_url = "https://raw.githubusercontent.com/Murcha1990/MLDS_ML_2022/main/Hometasks/HT1/cars_test.csv"
-        
-        df_train_raw = pd.read_csv(train_url)
-        df_test_raw = pd.read_csv(test_url)
-        
-        y_train = df_train_raw['selling_price']
-        y_test = df_test_raw['selling_price']
-        X_train_raw = df_train_raw.drop('selling_price', axis=1)
-        X_test_raw = df_test_raw.drop('selling_price', axis=1)
-        
-        return X_train_raw, y_train, X_test_raw, y_test
-        
-    except Exception as e:
-        st.error(f"Ошибка загрузки данных: {e}")
-        return None, None, None, None
-
-pipeline = load_pipeline()
-X_train_raw, y_train, X_test_raw, y_test = load_and_preprocess_data()
+st.subheader("Pip Freeze Output")
+try:
+    import subprocess
+    result = subprocess.run([sys.executable, "-m", "pip", "freeze"], 
+                          capture_output=True, text=True)
+    st.text_area("pip freeze output:", result.stdout, height=300)
+except:
+    st.error("Could not run pip freeze")
