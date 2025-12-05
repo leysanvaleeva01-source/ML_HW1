@@ -6,23 +6,7 @@ import requests
 from sklearn.compose import ColumnTransformer
 import joblib
 import sklearn
-def install_requirements():
-    requirements = [
-        'streamlit==1.28.0',
-        'pandas==2.2.2', 
-        'numpy==2.0.2',
-        'scikit-learn==1.6.1',
-        'joblib==1.3.2',
-        'requests==2.31.0'
-    ]
-    
-    for package in requirements:
-        try:
-            __import__(package.split('==')[0])
-        except ImportError:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
 
-install_requirements()
 
 st.set_page_config(page_title="Car Price Prediction", layout="wide")
 @st.cache_resource
