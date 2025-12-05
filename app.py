@@ -9,7 +9,7 @@ import sklearn
 print(sklearn.__version__)
 
 st.set_page_config(page_title="Car Price Prediction", layout="wide")
-st.title('Car Price Prediction')
+st.title((sklearn.__version__))
 
 @st.cache_resource
 def load_pipeline():
