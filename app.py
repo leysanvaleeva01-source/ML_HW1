@@ -259,43 +259,42 @@ owner, mileage, engine, max_power, seats, torque
             stats_df = X_train.describe().T
             stats_df['count'] = stats_df['count'].astype(int)
             st.dataframe(stats_df, use_container_width=True)
-
-st.subheader("Веса модели")
-
-try:
-    ridge_model = model.named_steps['model']
-    preprocessor = model.named_steps['preprocessor']
-    if hasattr(preprocessor, 'get_feature_names_out'):
-        feature_names = preprocessor.get_feature_names_out()
-    if hasattr(ridge_model, 'coef_'):
-        coef = ridge_model.coef_
-        coef_df = pd.DataFrame({
-            'feature': feature_names[:len(coef)],
-            'coefficient': coef
-        }).sort_values('coefficient', key=abs, ascending=False)
-        top_n = min(20, len(coef_df))
-        fig, ax = plt.subplots(figsize=(12, 8))
+    with tab4:
+        st.subheader("Веса модели")
+        try:
+            ridge_model = model.named_steps['model']
+            preprocessor = model.named_steps['preprocessor']
+            if hasattr(preprocessor, 'get_feature_names_out'):
+                feature_names = preprocessor.get_feature_names_out()
+            if hasattr(ridge_model, 'coef_'):
+                coef = ridge_model.coef_
+                coef_df = pd.DataFrame({
+                    'feature': feature_names[:len(coef)],
+                    'coefficient': coef
+                }).sort_values('coefficient', key=abs, ascending=False)
+                top_n = min(20, len(coef_df))
+                fig, ax = plt.subplots(figsize=(12, 8))
+                
+                top_coef = coef_df.head(top_n)
+                colors = ['red' if x < 0 else 'green' for x in top_coef['coefficient']]
+                
+                bars = ax.barh(range(len(top_coef)), top_coef['coefficient'], color=colors)
+                ax.set_yticks(range(len(top_coef)))
+                ax.set_yticklabels(top_coef['feature'])
+                ax.set_xlabel('Вес признака')
+                ax.set_title(f'Топ-{top_n} наиболее значимых признаков')
+                ax.grid(True, alpha=0.3, axis='x')
         
-        top_coef = coef_df.head(top_n)
-        colors = ['red' if x < 0 else 'green' for x in top_coef['coefficient']]
-        
-        bars = ax.barh(range(len(top_coef)), top_coef['coefficient'], color=colors)
-        ax.set_yticks(range(len(top_coef)))
-        ax.set_yticklabels(top_coef['feature'])
-        ax.set_xlabel('Вес признака')
-        ax.set_title(f'Топ-{top_n} наиболее значимых признаков')
-        ax.grid(True, alpha=0.3, axis='x')
-
-        for i, (bar, val) in enumerate(zip(bars, top_coef['coefficient'])):
-            ax.text(val, i, f'{val:.4f}', 
-                   va='center', ha='left' if val > 0 else 'right',
-                   fontsize=9, color='black')
-        
-        st.pyplot(fig)
-        
-        with st.expander("Смотрим все веса"):
-            st.dataframe(coef_df, use_container_width=True)
-        
+                for i, (bar, val) in enumerate(zip(bars, top_coef['coefficient'])):
+                    ax.text(val, i, f'{val:.4f}', 
+                           va='center', ha='left' if val > 0 else 'right',
+                           fontsize=9, color='black')
+                
+                st.pyplot(fig)
+                
+                with st.expander("Смотрим все веса"):
+                    st.dataframe(coef_df, use_container_width=True)
+                
         
 except Exception as e:
     st.warning(f"Could not visualize model coefficients: {str(e)}")
