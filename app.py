@@ -7,7 +7,10 @@ import requests
 import io
 import sys
 import types
-!pip install scikit-learn==1.6.1
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
+from sklearn.linear_model import Ridge
 st.set_page_config(page_title="Car Price Prediction", layout="wide")
 st.title('Car Price Prediction App')
 
