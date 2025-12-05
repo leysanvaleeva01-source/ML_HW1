@@ -4,10 +4,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
-import requests
-import io
 import os
-import joblib  # альтернатива pickle для sklearn объектов
+import warnings
+warnings.filterwarnings('ignore')
+
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer, make_column_selector
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import r2_score
 
 st.set_page_config(
     page_title="Предсказание цен на автомобили",
