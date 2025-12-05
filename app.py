@@ -49,11 +49,11 @@ try:
         col1, col2 = st.columns(2)
         
         with col1:
-            year = st.number_input("Год выпуска", 1900, 2024, 2015)
-            km_driven = st.number_input("Пробег (км)", 0, 1000000, 50000)
-            mileage = st.number_input("Расход топлива", 0.0, 50.0, 20.0)
-            engine = st.number_input("Объем двигателя (см³)", 0, 5000, 1200)
-            max_power = st.number_input("Мощность (л.с.)", 0.0, 500.0, 80.0)
+            year = st.number_input("Год выпуска", 1900, 2025, 2015)
+            km_driven = st.number_input("Пробег (км)", 0, 100000000, 50000)
+            mileage = st.number_input("Расход топлива", 0.0, 500.0, 20.0)
+            engine = st.number_input("Объем двигателя (см³)", 0, 500000.0, 1200)
+            max_power = st.number_input("Мощность (л.с.)", 0.0, 5000.0, 80.0)
         
         with col2:
             fuel_options = data['X_train']['fuel'].unique() if 'fuel' in data['X_train'].columns else []
@@ -72,7 +72,7 @@ try:
             brand_choice = st.radio("Выберите марку:", ["Из списка", "Ввести свою марку"])
             
             if brand_choice == "Из списка":
-                brand = st.selectbox("Марка (из списка)", brand_options) if len(brand_options) > 0 else st.selectbox("Марка", ["Maruti", "Hyundai", "Honda"])
+                brand = st.selectbox("Марка (из списка)", brand_options)
             else:
                 brand = st.text_input("Введите марку автомобиля", "Tesla")
         
@@ -102,10 +102,8 @@ try:
             processed_df = processed_df[data['feature_names']]
             prediction = model.predict(processed_df)[0]
             
-            st.success(f"### Предсказанная цена: {prediction:,.2f}")
+            st.success(f"### Предсказанная цена: {prediction:,.2f} (возможны неточности, обратитесь к специалисту)")
             
-            st.subheader("Обработанные признаки")
-            st.dataframe(processed_df, use_container_width=True)
     
     with tab2:
         st.header("Пакетное предсказание из CSV файла")
@@ -126,7 +124,7 @@ try:
                 st.success(f"Загружено {len(batch_df)} автомобилей")
                 
                 if st.button("Обработать и предсказать", type="primary"):
-                    with st.spinner("Обработка..."):
+                    with st.spinner("Обработка"):
                         original_df = batch_df.copy()
                         processed_batch = preprocess_input(batch_df)
                         
@@ -175,37 +173,35 @@ owner, mileage, engine, max_power, seats, torque
             st.dataframe(example_df, use_container_width=True)
     
     with tab3:
-        st.header("Exploratory Data Analysis (EDA)")
+        st.header("EDA")
         
         if 'X_train' in data and 'y_train' in data:
             X_train = data['X_train']
             y_train = data['y_train']
             
             st.subheader("Обзор датасета")
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Всего образцов", len(X_train))
             with col2:
                 st.metric("Количество признаков", len(X_train.columns))
             with col3:
                 st.metric("Средняя цена", f"{y_train.mean():,.0f}")
-            with col4:
-                st.metric("Стандартное отклонение цены", f"{y_train.std():,.0f}")
             
-            st.subheader("Distribution of Car Prices")
+            st.subheader("Распределение цен")
             fig, ax = plt.subplots(figsize=(10, 6))
             ax.hist(y_train, bins=50, edgecolor='black', alpha=0.7)
-            ax.set_xlabel('Price')
-            ax.set_ylabel('Frequency')
-            ax.set_title('Distribution of Car Prices')
+            ax.set_xlabel('Цена')
+            ax.set_ylabel('Количестов')
+            ax.set_title('Распределение цен авто')
             ax.grid(True, alpha=0.3)
             st.pyplot(fig)
             
-            st.subheader("Numerical Features vs Price")
+            st.subheader("Числовые признаки vs Цена")
             num_cols = ['year', 'km_driven', 'mileage', 'engine', 'max_power']
             num_cols = [col for col in num_cols if col in X_train.columns]
             
-            selected_num = st.selectbox("Select numerical feature", num_cols)
+            selected_num = st.selectbox("Выберите признак", num_cols)
             
             if selected_num:
                 fig, ax = plt.subplots(figsize=(10, 6))
@@ -216,11 +212,11 @@ owner, mileage, engine, max_power, seats, torque
                 ax.grid(True, alpha=0.3)
                 st.pyplot(fig)
             
-            st.subheader("Categorical Features Analysis")
+            st.subheader("Анализ категориальных признаков")
             cat_cols = ['fuel', 'seller_type', 'transmission', 'owner', 'brand', 'seats']
             cat_cols = [col for col in cat_cols if col in X_train.columns]
             
-            selected_cat = st.selectbox("Select categorical feature", cat_cols)
+            selected_cat = st.selectbox("Выберите призгнак", cat_cols)
             
             if selected_cat:
                 fig, ax = plt.subplots(figsize=(12, 6))
@@ -256,16 +252,14 @@ owner, mileage, engine, max_power, seats, torque
                 fig, ax = plt.subplots(figsize=(10, 8))
                 sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm', 
                            center=0, square=True, ax=ax)
-                ax.set_title('Correlation Matrix')
+                ax.set_title('Матрица корреляций')
                 st.pyplot(fig)
             
             st.subheader("Статистика признаков")
             stats_df = X_train.describe().T
             stats_df['count'] = stats_df['count'].astype(int)
             st.dataframe(stats_df, use_container_width=True)
-            
-        else:
-            st.warning("Предобработанные данные недоступны для анализа")
+
 
 except FileNotFoundError:
     st.error("Не найдены необходимые файлы. Загрузите:")
