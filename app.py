@@ -266,35 +266,146 @@ owner, mileage, engine, max_power, seats, torque
             preprocessor = model.named_steps['preprocessor']
             if hasattr(preprocessor, 'get_feature_names_out'):
                 feature_names = preprocessor.get_feature_names_out()
-            if hasattr(ridge_model, 'coef_'):
-                coef = ridge_model.coef_
-                coef_df = pd.DataFrame({
-                    'feature': feature_names[:len(coef)],
-                    'coefficient': coef
-                }).sort_values('coefficient', key=abs, ascending=False)
-                top_n = min(20, len(coef_df))
-                fig, ax = plt.subplots(figsize=(12, 8))
-                
-                top_coef = coef_df.head(top_n)
-                colors = ['red' if x < 0 else 'green' for x in top_coef['coefficient']]
-                
-                bars = ax.barh(range(len(top_coef)), top_coef['coefficient'], color=colors)
-                ax.set_yticks(range(len(top_coef)))
-                ax.set_yticklabels(top_coef['feature'])
-                ax.set_xlabel('Вес признака')
-                ax.set_title(f'Топ-{top_n} наиболее значимых признаков')
-                ax.grid(True, alpha=0.3, axis='x')
-        
-                for i, (bar, val) in enumerate(zip(bars, top_coef['coefficient'])):
-                    ax.text(val, i, f'{val:.4f}', 
-                           va='center', ha='left' if val > 0 else 'right',
-                           fontsize=9, color='black')
-                
-                st.pyplot(fig)
-                
-                with st.expander("Смотрим все веса"):
-                    st.dataframe(coef_df, use_container_width=True)
-                
+                if hasattr(ridge_model, 'coef_'):
+                    coef = ridge_model.coef_
+                    coef_df = pd.DataFrame({
+                        'feature': feature_names[:len(coef)],
+                        'coefficient': coef,
+                        'abs_coefficient': abs(coef)
+                    })
+                    
+                    # Разделяем на числовые и категориальные
+                    numeric_features = ['year', 'km_driven', 'mileage', 'engine', 'max_power']
+                    
+                    numeric_mask = coef_df['feature'].isin(numeric_features)
+                    numeric_coef = coef_df[numeric_mask].copy()
+                    categorical_coef = coef_df[~numeric_mask].copy()
+                    
+                    # 1. Визуализация числовых фичей
+                    st.subheader("Numerical Features Importance")
+                    
+                    if len(numeric_coef) > 0:
+                        numeric_coef = numeric_coef.sort_values('abs_coefficient', ascending=False)
+                        
+                        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+                        
+                        # Барплот
+                        colors = ['red' if x < 0 else 'green' for x in numeric_coef['coefficient']]
+                        bars = ax1.bar(range(len(numeric_coef)), numeric_coef['coefficient'], color=colors)
+                        ax1.set_xticks(range(len(numeric_coef)))
+                        ax1.set_xticklabels(numeric_coef['feature'], rotation=45, ha='right')
+                        ax1.set_ylabel('Coefficient Value')
+                        ax1.set_title('Numerical Features Coefficients')
+                        ax1.grid(True, alpha=0.3)
+                        
+                        for bar, val in zip(bars, numeric_coef['coefficient']):
+                            ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
+                                    f'{val:.4f}', ha='center', va='bottom' if val > 0 else 'top',
+                                    fontsize=9)
+                        
+                        # Визуализация влияния (абсолютные значения)
+                        ax2.pie(numeric_coef['abs_coefficient'], labels=numeric_coef['feature'],
+                               autopct='%1.1f%%', startangle=90)
+                        ax2.set_title('Relative Importance (Absolute Values)')
+                        
+                        st.pyplot(fig)
+                        
+                        with st.expander("Show Numerical Coefficients Table"):
+                            st.dataframe(numeric_coef[['feature', 'coefficient']].sort_values('coefficient', ascending=False),
+                                       use_container_width=True)
+                    else:
+                        st.info("No numerical features found in model")
+                    
+                    # 2. Визуализация категориальных фичей (топ-15)
+                    st.subheader("Top Categorical Features Importance")
+                    
+                    if len(categorical_coef) > 0:
+                        categorical_coef = categorical_coef.sort_values('abs_coefficient', ascending=False)
+                        
+                        # Берем топ-15
+                        top_cat = min(15, len(categorical_coef))
+                        top_categorical = categorical_coef.head(top_cat).copy()
+                        
+                        fig, ax = plt.subplots(figsize=(14, 8))
+                        
+                        # Группируем по префиксу (brand_, fuel_ и т.д.)
+                        top_categorical['category'] = top_categorical['feature'].str.split('_').str[0]
+                        colors = plt.cm.tab20(np.linspace(0, 1, len(top_categorical['category'].unique())))
+                        color_map = {cat: colors[i] for i, cat in enumerate(top_categorical['category'].unique())}
+                        bar_colors = [color_map[cat] for cat in top_categorical['category']]
+                        
+                        bars = ax.barh(range(len(top_categorical)), top_categorical['coefficient'], color=bar_colors)
+                        ax.set_yticks(range(len(top_categorical)))
+                        ax.set_yticklabels(top_categorical['feature'])
+                        ax.set_xlabel('Coefficient Value')
+                        ax.set_title(f'Top-{top_cat} Categorical Features')
+                        ax.grid(True, alpha=0.3, axis='x')
+                        
+                        # Легенда для категорий
+                        from matplotlib.patches import Patch
+                        legend_elements = [Patch(facecolor=color_map[cat], label=cat) 
+                                         for cat in top_categorical['category'].unique()]
+                        ax.legend(handles=legend_elements, title='Category Type', loc='lower right')
+                        
+                        # Добавляем значения
+                        for i, (bar, val) in enumerate(zip(bars, top_categorical['coefficient'])):
+                            ax.text(val, i, f'{val:.4f}', 
+                                   va='center', ha='left' if val > 0 else 'right',
+                                   fontsize=8, color='black')
+                        
+                        st.pyplot(fig)
+                        
+                        # Статистика по категориальным фичам
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Total Categorical Features", len(categorical_coef))
+                        with col2:
+                            st.metric("Top Category Impact", 
+                                     f"{abs(categorical_coef['coefficient'].iloc[0]):.4f}")
+                        
+                        with st.expander("Show Top Categorical Coefficients"):
+                            st.dataframe(top_categorical[['feature', 'coefficient', 'category']], 
+                                       use_container_width=True)
+                        
+                        with st.expander("Show All Categorical Coefficients"):
+                            st.dataframe(categorical_coef[['feature', 'coefficient']], 
+                                       use_container_width=True)
+                    else:
+                        st.info("No categorical features found in model")
+                    
+                    # 3. Сводная статистика
+                    st.subheader("Model Coefficients Summary")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Total Features", len(coef_df))
+                    with col2:
+                        st.metric("Numerical Features", len(numeric_coef))
+                    with col3:
+                        st.metric("Categorical Features", len(categorical_coef))
+                    with col4:
+                        st.metric("Most Important", 
+                                 f"{coef_df.loc[coef_df['abs_coefficient'].idxmax(), 'feature'][:20]}...")
+                    
+                    # 4. Топ-5 положительных и отрицательных влияний
+                    st.subheader("Top Influences on Price")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**Top Positive Influences (increase price)**")
+                        positive_top = coef_df[coef_df['coefficient'] > 0].nlargest(5, 'coefficient')
+                        for idx, row in positive_top.iterrows():
+                            st.write(f"**{row['feature']}**: +{row['coefficient']:.4f}")
+                    
+                    with col2:
+                        st.write("**Top Negative Influences (decrease price)**")
+                        negative_top = coef_df[coef_df['coefficient'] < 0].nsmallest(5, 'coefficient')
+                        for idx, row in negative_top.iterrows():
+                            st.write(f"**{row['feature']}**: {row['coefficient']:.4f}")
+                            with st.expander("Смотрим все веса"):
+                                st.dataframe(coef_df, use_container_width=True)
+                            
         
         except Exception as e:
              st.warning(f"Could not visualize model coefficients: {str(e)}")
