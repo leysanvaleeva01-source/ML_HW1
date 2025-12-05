@@ -7,14 +7,15 @@ import pickle
 import requests
 import io
 import os
+import joblib  # альтернатива pickle для sklearn объектов
 
 st.set_page_config(
-    page_title="Предсказатель цен на автомобили",
+    page_title="Предсказание цен на автомобили",
     layout="wide"
 )
 
-st.title('Предсказатель цен на автомобили')
-st.write("Предсказание стоимости автомобилей на основе характеристик")
+st.title('EDA')
+st.write("Cмотрим графики")
 
 @st.cache_resource
 def load_pipeline():
@@ -28,7 +29,6 @@ def load_pipeline():
 
 @st.cache_data
 def load_and_preprocess_data():
-    """Загружает исходные данные и применяет предобработку"""
     try:
         # Загружаем исходные данные
         train_url = "https://raw.githubusercontent.com/Murcha1990/MLDS_ML_2022/main/Hometasks/HT1/cars_train.csv"
@@ -37,11 +37,8 @@ def load_and_preprocess_data():
         df_train_raw = pd.read_csv(train_url)
         df_test_raw = pd.read_csv(test_url)
         
-        # Сохраняем целевые переменные
         y_train = df_train_raw['selling_price']
         y_test = df_test_raw['selling_price']
-        
-        # Удаляем целевые переменные для предобработки
         X_train_raw = df_train_raw.drop('selling_price', axis=1)
         X_test_raw = df_test_raw.drop('selling_price', axis=1)
         
@@ -51,170 +48,178 @@ def load_and_preprocess_data():
         st.error(f"Ошибка загрузки данных: {e}")
         return None, None, None, None
 
+#Пришлось заново строить предобработку, потому что streamlit c ней не подружился
+def preprocess_data(df, reference_df=None):
+    """Вся предобработка, которую мы использовали"""
+    df = df.copy()
+    columns_to_clean = ['mileage', 'engine', 'max_power']
+    for column in columns_to_clean:
+        df[column] = df[column].astype(str).str.replace(r'[^\d\.]+', '', regex=True)
+        df[column] = pd.to_numeric(df[column], errors='coerce').astype('float64')
+    if 'torque' in df.columns:
+        df = df.drop('torque', axis=1)
+    if 'name' in df.columns:
+        df['brand'] = df['name'].str.split().str[0]
+        df = df.drop('name', axis=1)
+        col = "brand"
+        if reference_df is not None:
+            train_cats = set(reference_df[col].unique())
+            test_cats = set(df[col].unique())
+            unknown = test_cats - train_cats
+            if unknown:
+                most_frequent = reference_df[col].mode()[0]
+                df[col] = df[col].replace(list(unknown), most_frequent)
+    
+    return df
+
 pipeline = load_pipeline()
 X_train_raw, y_train, X_test_raw, y_test = load_and_preprocess_data()
 
-# EDA раздел - применяем предобработку к данным
-st.header('Анализ данных (EDA) после предобработки')
+# EDA раздел
+st.header('Анализ данных')
 
 if pipeline is not None and X_train_raw is not None:
-    # Применяем только preprocessing часть пайплайна
     with st.spinner("Применяем предобработку данных..."):
         try:
-            # Если пайплайн имеет метод transform для preprocessing
-            if hasattr(pipeline, 'named_steps'):
-                # Создаем preprocessing pipeline (без модели)
-                from sklearn.pipeline import Pipeline
+            X_train_cleaned = preprocess_data(X_train_raw)
+            X_test_cleaned = preprocess_data(X_test_raw, reference_df=X_train_cleaned)
+            df_train_processed = X_train_cleaned.copy()
+            df_train_processed['selling_price'] = y_train.values
+            df_test_processed = X_test_cleaned.copy()
+            df_test_processed['selling_price'] = y_test.values
+            
+            st.success("Предобработка данных выполнена успешно")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Тренировочные данные")
+                st.write(f"Количество строк: {df_train_processed.shape[0]}")
+                st.write(f"Количество признаков: {df_train_processed.shape[1]}")
+                st.write("Типы данных:")
+                st.write(df_train_processed.dtypes)
+                st.write("Первые 5 строк:")
+                st.dataframe(df_train_processed.head())
+            
+            with col2:
+                st.subheader("Тестовые данные")
+                st.write(f"Количество строк: {df_test_processed.shape[0]}")
+                st.write(f"Количество признаков: {df_test_processed.shape[1]}")
+                st.write("Типы данных:")
+                st.write(df_test_processed.dtypes)
+                st.write("Первые 5 строк:")
+                st.dataframe(df_test_processed.head())
+            
+            # Графики
+            st.subheader("Графики по тренировочным данным")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("Распределение цен")
+                fig, ax = plt.subplots()
+                df_train_processed['selling_price'].hist(bins=30, ax=ax, edgecolor='black', alpha=0.7)
+                ax.set_xlabel("Цена (руб)")
+                ax.set_ylabel("Количество")
+                ax.set_title("Распределение цен (тренировочные данные)")
+                ax.grid(alpha=0.3)
+                st.pyplot(fig)
+            
+            with col2:
+                st.write("Сравнение распределений цен")
+                fig, ax = plt.subplots()
                 
-                # Извлекаем все шаги кроме последнего (модель)
-                preprocess_steps = []
-                for step_name, step_transformer in pipeline.named_steps.items():
-                    if step_name != 'model':
-                        preprocess_steps.append((step_name, step_transformer))
+                # Берем логарифм цен для лучшей визуализации
+                train_log_price = np.log1p(df_train_processed['selling_price'])
+                test_log_price = np.log1p(df_test_processed['selling_price'])
                 
-                # Создаем preprocessing pipeline
-                preprocess_pipeline = Pipeline(preprocess_steps)
+                ax.hist(train_log_price, bins=30, alpha=0.7, label='Тренировочные', edgecolor='black')
+                ax.hist(test_log_price, bins=30, alpha=0.7, label='Тестовые', edgecolor='black')
                 
-                # Применяем предобработку
-                X_train_processed = preprocess_pipeline.transform(X_train_raw)
-                X_test_processed = preprocess_pipeline.transform(X_test_raw)
+                ax.set_xlabel("Логарифм цены")
+                ax.set_ylabel("Количество")
+                ax.set_title("Сравнение распределений цен")
+                ax.legend()
+                ax.grid(alpha=0.3)
+                st.pyplot(fig)
+            
+            # Статистика по числовым признакам
+            st.subheader("Статистика числовых признаков")
+            
+            # Выбираем числовые признаки
+            numeric_cols = ['year', 'km_driven', 'mileage', 'engine', 'max_power', 'selling_price']
+            available_numeric_cols = [col for col in numeric_cols if col in df_train_processed.columns]
+            
+            if available_numeric_cols:
+                col1, col2 = st.columns(2)
                 
-                # Создаем DataFrame с обработанными данными
-                # Получаем имена признаков
-                feature_names = []
-                if hasattr(preprocess_pipeline, 'get_feature_names_out'):
-                    feature_names = list(preprocess_pipeline.get_feature_names_out())
-                else:
-                    # Если не можем получить имена, создаем простые
-                    feature_names = [f'feature_{i}' for i in range(X_train_processed.shape[1])]
+                with col1:
+                    st.write("Тренировочные данные:")
+                    st.write(df_train_processed[available_numeric_cols].describe())
                 
-                df_train_processed = pd.DataFrame(X_train_processed, columns=feature_names)
-                df_train_processed['selling_price'] = y_train.values
+                with col2:
+                    st.write("Тестовые данные:")
+                    st.write(df_test_processed[available_numeric_cols].describe())
+            
+            # Матрица корреляций
+            st.subheader("Матрица корреляций (тренировочные данные)")
+            
+            # Берем только числовые колонки
+            numeric_df = df_train_processed.select_dtypes(include=[np.number])
+            
+            if len(numeric_df.columns) > 1:
+                fig, ax = plt.subplots(figsize=(10, 8))
+                corr_matrix = numeric_df.corr()
                 
-                df_test_processed = pd.DataFrame(X_test_processed, columns=feature_names)
-                df_test_processed['selling_price'] = y_test.values
+                # Маска для верхнего треугольника
+                mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
                 
-                st.success("Предобработка данных выполнена успешно")
-                
+                sns.heatmap(corr_matrix, mask=mask, annot=True, fmt='.2f', cmap='coolwarm', 
+                           center=0, ax=ax, square=True, cbar_kws={"shrink": 0.8})
+                ax.set_title("Корреляция между числовыми признаками")
+                plt.xticks(rotation=45, ha='right')
+                plt.yticks(rotation=0)
+                st.pyplot(fig)
+            
+            # Информация о пропущенных значениях
+            st.subheader("Информация о пропущенных значениях")
+            
+            missing_train = df_train_processed.isnull().sum()
+            missing_test = df_test_processed.isnull().sum()
+            
+            missing_df = pd.DataFrame({
+                'Тренировочные_пропуски': missing_train,
+                'Тестовые_пропуски': missing_test
+            })
+            
+            st.write("Пропущенные значения после предобработки:")
+            if (missing_df.sum(axis=1) > 0).any():
+                st.dataframe(missing_df[missing_df.sum(axis=1) > 0])
             else:
-                st.error("Пайплайн не имеет ожидаемой структуры")
-                df_train_processed = None
-                df_test_processed = None
+                st.write("Пропущенных значений нет")
+            
+            # Распределение категориальных признаков
+            st.subheader("Распределение категориальных признаков")
+            
+            categorical_cols = ['fuel', 'seller_type', 'transmission', 'owner', 'brand', 'seats']
+            available_cat_cols = [col for col in categorical_cols if col in df_train_processed.columns]
+            
+            for col in available_cat_cols:
+                fig, ax = plt.subplots(figsize=(10, 4))
+                value_counts = df_train_processed[col].value_counts().head(10)
+                value_counts.plot(kind='bar', ax=ax, color='skyblue', edgecolor='black', alpha=0.7)
+                ax.set_title(f"Распределение {col} (топ-10)")
+                ax.set_xlabel(col)
+                ax.set_ylabel("Количество")
+                plt.xticks(rotation=45, ha='right')
+                ax.grid(axis='y', alpha=0.3)
+                st.pyplot(fig)
                 
         except Exception as e:
             st.error(f"Ошибка при предобработке: {e}")
             df_train_processed = None
             df_test_processed = None
-    
-    if df_train_processed is not None:
-        # Показываем информацию о данных
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Тренировочные данные")
-            st.write(f"Количество строк: {df_train_processed.shape[0]}")
-            st.write(f"Количество признаков: {df_train_processed.shape[1]}")
-            st.write("Первые 5 строк:")
-            st.dataframe(df_train_processed.head())
-        
-        with col2:
-            st.subheader("Тестовые данные")
-            st.write(f"Количество строк: {df_test_processed.shape[0]}")
-            st.write(f"Количество признаков: {df_test_processed.shape[1]}")
-            st.write("Первые 5 строк:")
-            st.dataframe(df_test_processed.head())
-        
-        # Графики для тренировочных данных
-        st.subheader("Графики по тренировочным данным")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("Распределение цен")
-            fig, ax = plt.subplots()
-            df_train_processed['selling_price'].hist(bins=30, ax=ax, edgecolor='black', alpha=0.7)
-            ax.set_xlabel("Цена (руб)")
-            ax.set_ylabel("Количество")
-            ax.set_title("Распределение цен (тренировочные данные)")
-            ax.grid(alpha=0.3)
-            st.pyplot(fig)
-        
-        with col2:
-            st.write("Сравнение распределений цен")
-            fig, ax = plt.subplots()
-            
-            # Берем логарифм цен для лучшей визуализации
-            train_log_price = np.log1p(df_train_processed['selling_price'])
-            test_log_price = np.log1p(df_test_processed['selling_price'])
-            
-            ax.hist(train_log_price, bins=30, alpha=0.7, label='Тренировочные', edgecolor='black')
-            ax.hist(test_log_price, bins=30, alpha=0.7, label='Тестовые', edgecolor='black')
-            
-            ax.set_xlabel("Логарифм цены")
-            ax.set_ylabel("Количество")
-            ax.set_title("Сравнение распределений цен")
-            ax.legend()
-            ax.grid(alpha=0.3)
-            st.pyplot(fig)
-        
-        # Статистика по числовым признакам
-        st.subheader("Статистика числовых признаков")
-        
-        # Выбираем первые 5 числовых признаков для анализа
-        numeric_cols = df_train_processed.select_dtypes(include=[np.number]).columns
-        if len(numeric_cols) > 5:
-            display_cols = numeric_cols[:5]
-        else:
-            display_cols = numeric_cols
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("Тренировочные данные:")
-            st.write(df_train_processed[display_cols].describe())
-        
-        with col2:
-            st.write("Тестовые данные:")
-            st.write(df_test_processed[display_cols].describe())
-        
-        # Матрица корреляций для тренировочных данных
-        if len(numeric_cols) > 1:
-            st.subheader("Матрица корреляций (тренировочные данные)")
-            
-            # Берем только первые 10 признаков для читаемости
-            if len(numeric_cols) > 10:
-                corr_cols = numeric_cols[:10]
-            else:
-                corr_cols = numeric_cols
-            
-            fig, ax = plt.subplots(figsize=(10, 8))
-            corr_matrix = df_train_processed[corr_cols].corr()
-            sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', 
-                       center=0, ax=ax, square=True, cbar_kws={"shrink": 0.8})
-            ax.set_title("Корреляция между признаками")
-            plt.xticks(rotation=45, ha='right')
-            plt.yticks(rotation=0)
-            st.pyplot(fig)
-        
-        # Информация о пропущенных значениях
-        st.subheader("Информация о пропущенных значениях")
-        
-        missing_train = df_train_processed.isnull().sum()
-        missing_test = df_test_processed.isnull().sum()
-        
-        missing_df = pd.DataFrame({
-            'Тренировочные_пропуски': missing_train,
-            'Тестовые_пропуски': missing_test
-        })
-        
-        st.write("Пропущенные значения после предобработки:")
-        st.dataframe(missing_df[missing_df.sum(axis=1) > 0])
-
 else:
     st.warning("Не удалось загрузить данные или пайплайн")
-
-# Разделы предсказания и визуализации весов остаются без изменений...
-# [Остальной код предсказания и визуализации весов из предыдущего варианта]
 
 st.header('Предсказание цены')
 
@@ -227,8 +232,10 @@ if pipeline is not None:
         if pred_file is not None:
             df_pred = pd.read_csv(pred_file)
             st.write(f"Загружено {len(df_pred)} автомобилей")
+            st.write("Первые 5 строк:")
+            st.dataframe(df_pred.head())
             
-            if st.button("Предсказать все цены"):
+            if st.button("Предсказать все цены", type="primary"):
                 with st.spinner("Выполняется предсказание..."):
                     try:
                         predictions = pipeline.predict(df_pred)
@@ -239,17 +246,19 @@ if pipeline is not None:
                         st.subheader("Результаты предсказания")
                         st.dataframe(df_pred[['predicted_price']].style.format({'predicted_price': '{:,.0f}'}))
                         
+                        # Скачивание результатов
                         csv = df_pred.to_csv(index=False)
                         st.download_button(
                             "Скачать результаты",
                             csv,
                             "car_predictions.csv",
-                            "text/csv"
+                            "text/csv",
+                            key='download-csv'
                         )
                     except Exception as e:
                         st.error(f"Ошибка: {str(e)}")
     
-    else:
+    else:  # Ручной ввод
         st.subheader("Введите характеристики автомобиля")
         
         left, right = st.columns(2)
@@ -270,6 +279,7 @@ if pipeline is not None:
             seats = st.selectbox("Количество мест", [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
         
         if st.button("Узнать цену", type="primary"):
+            # Создаем DataFrame с введенными данными
             input_data = pd.DataFrame([{
                 'name': name,
                 'year': year,
@@ -284,35 +294,53 @@ if pipeline is not None:
                 'seats': seats
             }])
             
+            # Показываем введенные данные
+            st.write("Введенные данные:")
+            st.dataframe(input_data)
+            
             try:
+                # Делаем предсказание
                 prediction = pipeline.predict(input_data)[0]
                 
                 st.markdown("---")
                 st.subheader("Результат предсказания")
-                st.markdown(f"**Предсказанная цена:** {prediction:,.0f} руб.")
-                st.write(f"Точность модели: R² = 0.69")
+                st.markdown(f"### **Предсказанная цена:** {prediction:,.0f} руб.")
+                
+                # Дополнительная информация
+                st.info(f"Это примерно {prediction/100000:.1f} лакхов")
+                
             except Exception as e:
                 st.error(f"Ошибка предсказания: {str(e)}")
+                st.write("Убедитесь, что все поля заполнены корректно.")
 
 # Визуализация весов модели
 st.header('Важность признаков модели')
 
-if pipeline is not None and st.button("Показать важность признаков"):
+if pipeline is not None and st.checkbox("Показать важность признаков", value=False):
     try:
         if hasattr(pipeline, 'named_steps') and 'model' in pipeline.named_steps:
             model = pipeline.named_steps['model']
             
             if hasattr(model, 'coef_'):
-                coef = model.coef_
+                # Получаем имена признаков из пайплайна
+                try:
+                    # Пробуем получить имена признаков через preprocessor
+                    preprocessor = pipeline.named_steps['preprocessor']
+                    # Получаем имена признаков после всех трансформаций
+                    feature_names = []
+                    
+                    # Для ColumnTransformer
+                    if hasattr(preprocessor, 'get_feature_names_out'):
+                        feature_names = preprocessor.get_feature_names_out()
+                    else:
+                        # Если не работает, создаем имена вручную
+                        # Примерное количество признаков после OHE
+                        num_features = len(model.coef_)
+                        feature_names = [f'feature_{i}' for i in range(num_features)]
+                except:
+                    feature_names = [f'feature_{i}' for i in range(len(model.coef_))]
                 
-                # Получаем имена признаков
-                feature_names = []
-                if hasattr(pipeline, 'get_feature_names_out'):
-                    feature_names = list(pipeline.get_feature_names_out())
-                elif hasattr(pipeline.named_steps.get('preprocessor', None), 'get_feature_names_out'):
-                    feature_names = list(pipeline.named_steps['preprocessor'].get_feature_names_out())
-                else:
-                    feature_names = [f"Признак {i+1}" for i in range(len(coef))]
+                coef = model.co_
                 
                 # Создаем DataFrame с весами
                 weights_df = pd.DataFrame({
@@ -328,11 +356,11 @@ if pipeline is not None and st.button("Показать важность при�
                 y_pos = np.arange(len(top_weights))
                 colors = ['green' if x > 0 else 'red' for x in top_weights['Вес']]
                 
-                ax.barh(y_pos, top_weights['Вес'], color=colors, alpha=0.7)
+                ax.barh(y_pos, top_weights['Вес'], color=colors, alpha=0.7, edgecolor='black')
                 ax.set_yticks(y_pos)
                 ax.set_yticklabels(top_weights['Признак'], fontsize=9)
                 ax.set_xlabel("Вес признака")
-                ax.set_title("Топ-15 самых важных признаков")
+                ax.set_title("Топ-15 самых важных признаков (Ridge регрессия)")
                 ax.axvline(x=0, color='black', linestyle='-', linewidth=0.5, alpha=0.5)
                 ax.grid(axis='x', alpha=0.3)
                 
@@ -347,16 +375,53 @@ if pipeline is not None and st.button("Показать важность при�
         else:
             st.write("Не удалось извлечь модель из пайплайна")
     except Exception as e:
-        st.error(f"Ошибка: {str(e)}")
+        st.error(f"Ошибка при визуализации весов: {str(e)}")
 
+# Боковая панель
 with st.sidebar:
-    st.header("Информация")
-    st.write("""
-    **Описание модели:**
-    - Алгоритм: Ridge регрессия
-    - Точность (R²): 0.69
-    - 31% предсказаний в пределах 10% от реальной цены
+    st.header("Информация о модели")
+    st.markdown("""
+    **Характеристики модели:**
     
-    **Данные для EDA:**
-    Исходные данные после применения предобработки
+    📊 **Алгоритм:** Ridge регрессия
+    
+    🎯 **Точность (R²):** 0.69
+    
+    ✅ **31% предсказаний** в пределах 10% от реальной цены
+    
+    🔧 **Предобработка включает:**
+    - Очистка числовых полей
+    - Извлечение бренда из названия
+    - Заполнение пропусков медианой/модой
+    - Стандартизация числовых признаков
+    - One-Hot Encoding категориальных
+    
+    📈 **Данные для EDA:**
+    - Тренировочная выборка: 7,000+ автомобилей
+    - Тестовая выборка: 2,000+ автомобилей
     """)
+    
+    st.markdown("---")
+    
+    if pipeline is not None:
+        st.success("✅ Модель загружена успешно")
+    else:
+        st.error("❌ Модель не загружена")
+    
+    st.markdown("---")
+    st.markdown("**Инструкция:**")
+    st.markdown("""
+    1. Используйте вкладку EDA для анализа данных
+    2. Выберите способ ввода данных для предсказания
+    3. Нажмите кнопку для получения предсказания
+    4. Изучите важность признаков модели
+    """)
+
+# Футер
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center'>
+    <p>Модель машинного обучения для предсказания цен на автомобили</p>
+    <p>Для корректной работы убедитесь, что файл <code>final_pipeline.pkl</code> находится в рабочей директории</p>
+</div>
+""", unsafe_allow_html=True)
