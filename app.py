@@ -296,8 +296,8 @@ owner, mileage, engine, max_power, seats, torque
                     st.dataframe(coef_df, use_container_width=True)
                 
         
-except Exception as e:
-    st.warning(f"Could not visualize model coefficients: {str(e)}")
+        except Exception as e:
+             st.warning(f"Could not visualize model coefficients: {str(e)}")
 
 except FileNotFoundError:
     st.error("Не найдены необходимые файлы. Загрузите:")
