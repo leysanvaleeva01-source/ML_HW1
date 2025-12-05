@@ -52,8 +52,8 @@ try:
             year = st.number_input("Год выпуска", 1900, 2025, 2015)
             km_driven = st.number_input("Пробег (км)", 0, 10000000, 50000)
             mileage = st.number_input("Расход топлива", 0.0, 500.0, 20.0)
-            engine = st.number_input("Объем двигателя (см³)", 0, 500000.0, 1200)
-            max_power = st.number_input("Мощность (л.с.)", 0.0, 5000.0, 80.0)
+            engine = st.number_input("Объем двигателя (см³)", 0, 500000, 1200)
+            max_power = st.number_input("Мощность (л.с.)", 0.0, 5000, 80.0)
         
         with col2:
             fuel_options = data['X_train']['fuel'].unique() if 'fuel' in data['X_train'].columns else []
