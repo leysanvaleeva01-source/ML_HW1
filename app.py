@@ -7,7 +7,7 @@ import requests
 import io
 import sys
 import types
-
+pip install scikit-learn==1.6.1
 st.set_page_config(page_title="Car Price Prediction", layout="wide")
 st.title('Car Price Prediction App')
 
